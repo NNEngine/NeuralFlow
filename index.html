@@ -30,6 +30,19 @@
         input[type="range"] {
             accent-color: var(--primary);
             height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 12px;
+            height: 12px;
+            background: white;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px var(--primary-glow);
         }
 
         .btn-primary {
@@ -114,7 +127,7 @@
         <aside class="w-80 glass-panel p-6 border-r border-white/5 flex flex-col gap-6 z-20 overflow-y-auto">
             <section>
                 <div class="flex items-center justify-between mb-6">
-                    <label class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Layout</label>
+                    <label class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Network Topology</label>
                     <span id="layersVal" class="text-xs font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded">3 Layers</span>
                 </div>
                 
@@ -133,6 +146,15 @@
             <section class="mt-auto pt-6 border-t border-white/5">
                 <label class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-4 block">Engine & Aesthetics</label>
                 <div class="space-y-4 p-4 bg-white/5 rounded-2xl border border-white/5">
+                    <!-- SPEED CONTROL -->
+                    <div class="space-y-2">
+                        <div class="flex justify-between text-[10px] text-slate-500 uppercase font-bold">
+                            <span>Flow Velocity</span>
+                            <span id="speedVal" class="text-blue-400">1.0x</span>
+                        </div>
+                        <input type="range" id="speedInput" min="0.1" max="3" step="0.1" value="1.0" class="w-full">
+                    </div>
+
                     <div class="space-y-2">
                         <span class="text-[10px] text-slate-500 uppercase font-bold">Visual Theme</span>
                         <div class="grid grid-cols-3 gap-2">
@@ -207,6 +229,8 @@
         const backpropToggle = document.getElementById('backpropToggle');
         const jitterToggle = document.getElementById('jitterToggle');
         const telemetryToggle = document.getElementById('telemetryToggle');
+        const speedInput = document.getElementById('speedInput');
+        const speedVal = document.getElementById('speedVal');
         const presetSelect = document.getElementById('presetSelect');
         const analysisStats = document.getElementById('analysisStats');
         const analysisOverlay = document.getElementById('analysisOverlay');
@@ -217,6 +241,7 @@
         let layers = [];
         let isPlaying = true;
         let globalTime = 0;
+        let animationSpeed = 1.0;
         let layerConfig = [4, 6, 2]; 
         let layerNames = ["Input Vector", "Hidden Layer", "Output Logits"];
         let layerBaseValues = [0.8, 0.4, 0.2, 0.1, 0.1, 0.1];
@@ -371,7 +396,6 @@
         }
 
         function drawSparkline() {
-            // Fix: ensure canvas dimensions are correct and internal width matches CSS
             const rect = sparklineCanvas.getBoundingClientRect();
             if (sparklineCanvas.width !== rect.width || sparklineCanvas.height !== rect.height) {
                 sparklineCanvas.width = rect.width;
@@ -391,13 +415,11 @@
             const step = w / (entropyHistory.length - 1);
             entropyHistory.forEach((val, i) => {
                 const x = i * step;
-                // Clamp Y values to ensure they stay within canvas height
-                const y = h - (Math.min(1, Math.max(0, val)) * h * 0.8) - 4;
+                const y = h - (Math.min(1.2, Math.max(0, val)) * h * 0.7) - 4;
                 if (i === 0) sctx.moveTo(x, y); else sctx.lineTo(x, y);
             });
             sctx.stroke();
 
-            // Draw Area
             sctx.lineTo(w, h); 
             sctx.lineTo(0, h);
             sctx.closePath();
@@ -456,21 +478,15 @@
                 for (let j = 0; j < count; j++) {
                     layerNeurons.push(new Neuron(xPadding + xStep * i, startY + (count === 1 ? 0 : yStep * j), i, j));
                 }
-                layerNeurons.forEach(n => {
-                    // Pre-calc positions to avoid expensive math in draw
-                    n.x = xPadding + xStep * i;
-                    n.y = startY + (count === 1 ? 0 : yStep * n.neuronIdx);
-                });
                 layers.push(layerNeurons);
             }
         }
 
         function resize() {
             width = container.clientWidth; height = container.clientHeight;
-            // Higher resolution scaling for crisper video
             canvas.width = width * 2; 
             canvas.height = height * 2;
-            ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.scale(2, 2);
             canvas.style.width = width + 'px'; canvas.style.height = height + 'px';
             initNetwork();
@@ -480,7 +496,7 @@
             ctx.fillStyle = "#020617";
             ctx.fillRect(0, 0, width, height);
             
-            if (isPlaying) globalTime += 0.025;
+            if (isPlaying) globalTime += 0.025 * animationSpeed;
 
             ctx.save();
             ctx.textAlign = 'center'; ctx.font = '600 10px "JetBrains Mono"';
@@ -497,6 +513,11 @@
             updateAnalytics();
             requestAnimationFrame(animate);
         }
+
+        speedInput.oninput = (e) => {
+            animationSpeed = parseFloat(e.target.value);
+            speedVal.textContent = animationSpeed.toFixed(1) + 'x';
+        };
 
         exportBtn.onclick = () => {
             if (mediaRecorder && mediaRecorder.state === 'recording') {
