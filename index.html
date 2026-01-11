@@ -3,408 +3,588 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Neural Flow Visualizer</title>
+    <title>Neural Flow Visualizer Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=JetBrains+Mono&display=swap');
         
+        :root {
+            --primary: #3b82f6;
+            --primary-glow: rgba(59, 130, 246, 0.5);
+            --accent: #ef4444;
+        }
+
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #0f172a;
+            background-color: #020617;
             color: #f8fafc;
             overflow: hidden;
         }
 
         .glass-panel {
-            background: rgba(30, 41, 59, 0.7);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        #network-canvas {
-            cursor: grab;
-        }
-
-        #network-canvas:active {
-            cursor: grabbing;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
         }
 
         input[type="range"] {
-            accent-color: #38bdf8;
+            accent-color: var(--primary);
+            height: 4px;
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #38bdf8 0%, #2563eb 100%);
-            transition: all 0.2s ease;
+            background: linear-gradient(135deg, #6366f1 0%, var(--primary) 100%);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .btn-primary:hover {
             transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+            box-shadow: 0 4px 20px var(--primary-glow);
         }
 
         .recording-pulse {
-            animation: pulse 1.5s infinite;
+            animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
 
         @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.4; }
-            100% { opacity: 1; }
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        
+        #analysisOverlay.hidden-panel {
+            opacity: 0;
+            transform: translateX(20px);
+            pointer-events: none;
+        }
+
+        .sparkline-container {
+            width: 100%;
+            height: 60px;
+            display: block;
+            border-radius: 8px;
+        }
+
+        canvas {
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
         }
     </style>
 </head>
 <body class="flex flex-col h-screen">
 
-    <!-- Top Navigation / Controls -->
-    <header class="glass-panel px-6 py-4 flex items-center justify-between z-10 border-b">
-        <div class="flex items-center gap-3">
-            <div class="w-8 h-8 btn-primary rounded-lg flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <!-- Top Navigation -->
+    <header class="glass-panel px-8 py-4 flex items-center justify-between z-20 border-b border-white/5">
+        <div class="flex items-center gap-4">
+            <div class="w-10 h-10 btn-primary rounded-xl flex items-center justify-center shadow-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
             </div>
-            <h1 class="text-xl font-semibold tracking-tight">Neural<span class="text-sky-400">Flow</span></h1>
+            <div>
+                <h1 class="text-lg font-bold tracking-tight leading-none">Neural<span class="text-blue-400">Flow</span> <span class="text-[10px] bg-blue-500/20 px-1.5 py-0.5 rounded text-blue-300 ml-2">PRO</span></h1>
+                <p class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mt-1">v2.3 Ultra-HD Engine</p>
+            </div>
         </div>
 
-        <div class="flex items-center gap-6">
-            <div class="flex items-center gap-2 text-sm font-medium">
-                <button id="playPauseBtn" class="flex items-center gap-2 px-4 py-2 rounded-full glass-panel hover:bg-slate-700 transition-colors">
+        <div class="flex items-center gap-4">
+            <select id="presetSelect" class="bg-slate-900/80 text-[11px] text-slate-300 border border-white/10 rounded-full px-4 py-2 focus:ring-1 focus:ring-blue-500 outline-none">
+                <option value="custom">Custom Build</option>
+                <option value="bottleneck">Deep Bottleneck</option>
+                <option value="wide">Wide Hidden Layer</option>
+                <option value="classifier">Binary Classifier</option>
+            </select>
+            <div class="flex items-center bg-slate-900/50 p-1 rounded-full border border-white/5">
+                <button id="playPauseBtn" class="flex items-center gap-2 px-5 py-2 rounded-full hover:bg-white/5 transition-all text-sm font-medium">
                     <span id="playIcon">⏸</span> <span id="playText">Pause</span>
                 </button>
-                <button id="exportBtn" class="flex items-center gap-2 px-4 py-2 rounded-full btn-primary font-semibold text-white">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                    Export Video
-                </button>
             </div>
+            <button id="exportBtn" class="flex items-center gap-2 px-6 py-2 rounded-full btn-primary font-bold text-sm text-white shadow-xl transition-all">
+                <span id="exportText">Export HQ Video</span>
+            </button>
         </div>
     </header>
 
     <main class="flex-1 relative flex overflow-hidden">
         
-        <!-- Left Sidebar: Configuration -->
-        <aside class="w-80 glass-panel p-6 border-r flex flex-col gap-8 z-10 overflow-y-auto">
-            <div>
-                <label class="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-4">Architecture</label>
+        <!-- Left Sidebar -->
+        <aside class="w-80 glass-panel p-6 border-r border-white/5 flex flex-col gap-6 z-20 overflow-y-auto">
+            <section>
+                <div class="flex items-center justify-between mb-6">
+                    <label class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Layout</label>
+                    <span id="layersVal" class="text-xs font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded">3 Layers</span>
+                </div>
                 
                 <div class="space-y-6">
-                    <div>
-                        <div class="flex justify-between mb-2">
-                            <span class="text-sm">Layers</span>
-                            <span id="layersVal" class="text-sm font-mono text-sky-400">3</span>
+                    <div class="space-y-3">
+                        <div class="flex justify-between text-xs">
+                            <span class="text-slate-300">Total Layers</span>
+                            <input type="range" id="layersInput" min="2" max="6" value="3" class="w-32">
                         </div>
-                        <input type="range" id="layersInput" min="2" max="6" value="3" class="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer">
                     </div>
 
-                    <div id="neuronsContainer" class="space-y-4">
-                        <!-- Dynamic Neuron Sliders -->
+                    <div id="neuronsContainer" class="space-y-4 pt-4 border-t border-white/5"></div>
+                </div>
+            </section>
+
+            <section class="mt-auto pt-6 border-t border-white/5">
+                <label class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-4 block">Engine & Aesthetics</label>
+                <div class="space-y-4 p-4 bg-white/5 rounded-2xl border border-white/5">
+                    <div class="space-y-2">
+                        <span class="text-[10px] text-slate-500 uppercase font-bold">Visual Theme</span>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button onclick="setTheme('blue')" class="h-6 rounded bg-blue-600 border border-white/20 hover:scale-110 transition-transform"></button>
+                            <button onclick="setTheme('cyberpunk')" class="h-6 rounded bg-fuchsia-600 border border-white/20 hover:scale-110 transition-transform"></button>
+                            <button onclick="setTheme('matrix')" class="h-6 rounded bg-emerald-600 border border-white/20 hover:scale-110 transition-transform"></button>
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-slate-400">Network Telemetry</span>
+                        <input type="checkbox" id="telemetryToggle" checked class="w-4 h-4 rounded bg-slate-800 accent-blue-500">
+                    </div>
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-slate-400">Weight Jitter</span>
+                        <input type="checkbox" id="jitterToggle" class="w-4 h-4 rounded bg-slate-800 accent-blue-500">
+                    </div>
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-slate-400">Backpropagation</span>
+                        <input type="checkbox" id="backpropToggle" class="w-4 h-4 rounded bg-slate-800 accent-blue-500">
                     </div>
                 </div>
-            </div>
-
-            <div>
-                <label class="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-4">Visuals</label>
-                <div class="space-y-4">
-                    <div class="flex justify-between items-center">
-                        <span class="text-sm">Flow Speed</span>
-                        <input type="range" id="speedInput" min="1" max="10" value="5" class="w-24 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer">
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span class="text-sm">Signal Glow</span>
-                        <input type="checkbox" id="glowToggle" checked class="w-4 h-4 rounded text-sky-500 focus:ring-sky-500">
-                    </div>
-                </div>
-            </div>
-
-            <div class="mt-auto pt-6 border-t border-slate-700/50">
-                <p class="text-xs text-slate-500 leading-relaxed italic">
-                    Waves indicate data packets moving between activation functions. Higher layer density increases computation overhead.
-                </p>
-            </div>
+            </section>
         </aside>
 
-        <!-- Canvas Area -->
+        <!-- Canvas Container -->
         <section id="canvasContainer" class="flex-1 relative bg-[#020617]">
             <canvas id="network-canvas"></canvas>
             
-            <!-- Recording Indicator -->
-            <div id="recordingIndicator" class="hidden absolute top-4 left-4 flex items-center gap-2 bg-red-500/20 border border-red-500/50 px-3 py-1 rounded-full text-red-400 text-xs font-bold uppercase tracking-tighter">
-                <span class="w-2 h-2 bg-red-500 rounded-full recording-pulse"></span>
-                Recording...
+            <!-- Analysis Overlay -->
+            <div id="analysisOverlay" class="absolute top-6 right-6 w-64 glass-panel p-5 rounded-2xl border border-white/10 z-10 transition-all duration-300">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-[10px] font-bold uppercase tracking-widest text-blue-400">Network Telemetry</h3>
+                    <span id="statusIndicator" class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                </div>
+                
+                <div id="analysisStats" class="space-y-4"></div>
+
+                <div class="mt-4 pt-4 border-t border-white/5 grid grid-cols-2 gap-2 text-center">
+                    <div class="bg-white/5 p-2 rounded-lg">
+                        <div class="text-[9px] text-slate-500 uppercase">Latency</div>
+                        <div class="text-xs font-mono text-slate-200">2.4ms</div>
+                    </div>
+                    <div class="bg-white/5 p-2 rounded-lg">
+                        <div class="text-[9px] text-slate-500 uppercase">Variance</div>
+                        <div id="jitterVal" class="text-xs font-mono text-slate-200">0.000</div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-4 border-t border-white/5">
+                    <span class="text-[9px] text-slate-500 uppercase font-bold tracking-widest mb-2 block">Convergence Entropy</span>
+                    <canvas id="sparkline" class="sparkline-container"></canvas>
+                </div>
+            </div>
+            
+            <div id="recordingIndicator" class="hidden absolute top-6 left-6 flex items-center gap-3 bg-red-500/20 border border-red-500/40 px-4 py-2 rounded-xl text-red-400 text-[10px] font-bold uppercase tracking-widest backdrop-blur-md">
+                <span class="w-2 h-2 bg-red-500 rounded-full recording-pulse shadow-[0_0_10px_#ef4444]"></span>
+                RECORDING HQ 10MBPS
             </div>
         </section>
     </main>
 
     <script>
-        /**
-         * Neural Flow Visualizer Logic
-         */
         const canvas = document.getElementById('network-canvas');
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
         const container = document.getElementById('canvasContainer');
         const layersInput = document.getElementById('layersInput');
         const neuronsContainer = document.getElementById('neuronsContainer');
         const layersValLabel = document.getElementById('layersVal');
         const playPauseBtn = document.getElementById('playPauseBtn');
         const exportBtn = document.getElementById('exportBtn');
-        const recordingIndicator = document.getElementById('recordingIndicator');
+        const exportText = document.getElementById('exportText');
+        const backpropToggle = document.getElementById('backpropToggle');
+        const jitterToggle = document.getElementById('jitterToggle');
+        const telemetryToggle = document.getElementById('telemetryToggle');
+        const presetSelect = document.getElementById('presetSelect');
+        const analysisStats = document.getElementById('analysisStats');
+        const analysisOverlay = document.getElementById('analysisOverlay');
+        const sparklineCanvas = document.getElementById('sparkline');
+        const sctx = sparklineCanvas.getContext('2d');
 
         let width, height;
         let layers = [];
-        let particles = [];
         let isPlaying = true;
-        let signalTime = 0;
-        let animationFrameId;
-        let layerConfig = [4, 6, 2]; // Initial default
+        let globalTime = 0;
+        let layerConfig = [4, 6, 2]; 
+        let layerNames = ["Input Vector", "Hidden Layer", "Output Logits"];
+        let layerBaseValues = [0.8, 0.4, 0.2, 0.1, 0.1, 0.1];
+        let layerActivations = ["none", "relu", "sigmoid", "relu", "relu", "relu"];
+        let nodeBoosts = {}; 
         
-        // Recording State
+        let entropyHistory = Array(50).fill(0.5);
+        let currentTheme = { primary: '#3b82f6', accent: '#ef4444' };
+
         let mediaRecorder;
         let recordedChunks = [];
 
+        function setTheme(type) {
+            const root = document.documentElement;
+            if (type === 'blue') {
+                currentTheme = { primary: '#3b82f6', accent: '#ef4444' };
+            } else if (type === 'cyberpunk') {
+                currentTheme = { primary: '#d946ef', accent: '#22d3ee' };
+            } else if (type === 'matrix') {
+                currentTheme = { primary: '#10b981', accent: '#f59e0b' };
+            }
+            root.style.setProperty('--primary', currentTheme.primary);
+            root.style.setProperty('--primary-glow', currentTheme.primary + '80');
+        }
+
+        const activate = (x, type) => {
+            if (type === 'relu') return Math.max(0, x);
+            if (type === 'sigmoid') return 1 / (1 + Math.exp(-x * 5));
+            if (type === 'tanh') return Math.tanh(x * 2);
+            return x;
+        };
+
         class Neuron {
             constructor(x, y, layerIdx, neuronIdx) {
-                this.x = x;
-                this.y = y;
-                this.layerIdx = layerIdx;
-                this.neuronIdx = neuronIdx;
-                this.radius = 14;
-                this.pulse = 0;
+                this.x = x; this.y = y; this.layerIdx = layerIdx; this.neuronIdx = neuronIdx;
+                this.radius = 16;
             }
 
             draw() {
-                const isActive = (Math.floor(signalTime * 1.5) % layers.length) === this.layerIdx;
+                const totalCycle = (layerConfig.length + 1) * 2;
+                const cycle = (globalTime * 0.8) % totalCycle;
+                const isForward = cycle < (layerConfig.length + 1);
+                const activeLayer = isForward ? Math.floor(cycle) : (layerConfig.length + 1) - (Math.floor(cycle) - (layerConfig.length + 1));
                 
-                // Outer Glow
-                if (isActive) {
-                    ctx.shadowBlur = 15;
-                    ctx.shadowColor = '#38bdf8';
+                const isActive = Math.floor(activeLayer) === this.layerIdx;
+                const intensity = isActive ? 1 - (cycle % 1) : 0;
+
+                let val = layerBaseValues[this.layerIdx] || 0.1;
+                if (nodeBoosts[`${this.layerIdx}-${this.neuronIdx}`]) val = 1.0;
+
+                const activatedVal = activate(val, layerActivations[this.layerIdx]);
+                const visualRadius = this.radius + (activatedVal * 6);
+
+                ctx.save();
+                if (intensity > 0) {
+                    ctx.shadowBlur = 30 * intensity;
+                    ctx.shadowColor = isForward ? currentTheme.primary : currentTheme.accent;
                 }
 
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.fillStyle = isActive ? '#38bdf8' : '#1e293b';
+                ctx.arc(this.x, this.y, visualRadius, 0, Math.PI * 2);
+                ctx.fillStyle = intensity > 0.1 ? (isForward ? currentTheme.primary : currentTheme.accent) : '#1e293b';
                 ctx.fill();
                 
-                ctx.shadowBlur = 0;
-                ctx.strokeStyle = '#334155';
-                ctx.lineWidth = 2;
+                ctx.strokeStyle = intensity > 0.1 ? '#ffffff' : '#334155';
+                ctx.lineWidth = intensity > 0.1 ? 2.5 : 1;
                 ctx.stroke();
-
-                // Inner Detail
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius * 0.4, 0, Math.PI * 2);
-                ctx.fillStyle = isActive ? '#fff' : '#0f172a';
-                ctx.fill();
+                ctx.restore();
             }
         }
 
         class Connection {
-            constructor(start, end) {
-                this.start = start;
-                this.end = end;
-            }
+            constructor(start, end) { this.start = start; this.end = end; }
 
             draw() {
-                const cp1x = this.start.x + (this.end.x - this.start.x) / 2;
-                const cp1y = this.start.y;
-                const cp2x = this.start.x + (this.end.x - this.start.x) / 2;
-                const cp2y = this.end.y;
+                const totalCycle = (layerConfig.length + 1) * (backpropToggle.checked ? 2 : 1);
+                const cycle = (globalTime * 0.8) % totalCycle;
+                const isForward = cycle < (layerConfig.length + 1);
+                
+                const activeLayer = isForward ? Math.floor(cycle) : (layerConfig.length) - (Math.floor(cycle) - (layerConfig.length + 1));
+                const isFlowing = activeLayer === (isForward ? this.start.layerIdx : this.end.layerIdx);
+                const progress = cycle % 1;
 
+                const cp1x = this.start.x + (this.end.x - this.start.x) * 0.5;
+                const cp2x = this.start.x + (this.end.x - this.start.x) * 0.5;
+
+                ctx.save();
                 ctx.beginPath();
                 ctx.moveTo(this.start.x, this.start.y);
-                ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, this.end.x, this.end.y);
+                ctx.bezierCurveTo(cp1x, this.start.y, cp2x, this.end.y, this.end.x, this.end.y);
                 
-                const progress = (signalTime * 1.5) % layers.length;
-                const isFlowing = progress >= this.start.layerIdx && progress < this.end.layerIdx;
-
-                ctx.strokeStyle = isFlowing ? 'rgba(56, 189, 248, 0.4)' : 'rgba(51, 65, 85, 0.2)';
-                ctx.lineWidth = isFlowing ? 2 : 1;
+                const jitter = (jitterToggle.checked ? Math.random() * 0.05 : 0);
+                ctx.strokeStyle = isFlowing ? (isForward ? currentTheme.primary + '88' : currentTheme.accent + '88') : 'rgba(51, 65, 85, 0.15)';
+                ctx.lineWidth = isFlowing ? 2.5 + jitter * 10 : 1;
                 ctx.stroke();
 
-                // Flowing Particle
                 if (isFlowing && isPlaying) {
-                    const t = (progress - this.start.layerIdx); // 0 to 1
-                    this.drawFlowParticle(t, cp1x, cp1y, cp2x, cp2y);
+                    this.drawParticle(isForward ? progress : 1 - progress, cp1x, cp2x, isForward);
                 }
+                ctx.restore();
             }
 
-            drawFlowParticle(t, cp1x, cp1y, cp2x, cp2y) {
-                // Cubic Bezier interpolation
-                const cx = (1 - t) ** 3 * this.start.x + 3 * (1 - t) ** 2 * t * cp1x + 3 * (1 - t) * t ** 2 * cp2x + t ** 3 * this.end.x;
-                const cy = (1 - t) ** 3 * this.start.y + 3 * (1 - t) ** 2 * t * cp1y + 3 * (1 - t) * t ** 2 * cp2y + t ** 3 * this.end.y;
-
+            drawParticle(t, cp1x, cp2x, isForward) {
+                const cx = Math.pow(1 - t, 3) * this.start.x + 3 * Math.pow(1 - t, 2) * t * cp1x + 3 * (1 - t) * Math.pow(t, 2) * cp2x + Math.pow(t, 3) * this.end.x;
+                const cy = Math.pow(1 - t, 3) * this.start.y + 3 * Math.pow(1 - t, 2) * t * this.start.y + 3 * (1 - t) * Math.pow(t, 2) * this.end.y + Math.pow(t, 3) * this.end.y;
                 ctx.beginPath();
-                ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-                ctx.fillStyle = '#fff';
-                ctx.shadowBlur = 10;
-                ctx.shadowColor = '#38bdf8';
+                ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = isForward ? currentTheme.primary : currentTheme.accent;
                 ctx.fill();
-                ctx.shadowBlur = 0;
             }
         }
 
-        function initNetwork() {
-            layers = [];
-            const layerCount = layerConfig.length;
-            const xStep = width / (layerCount + 1);
+        function updateAnalytics() {
+            if (!telemetryToggle.checked) {
+                analysisOverlay.classList.add('hidden-panel');
+                return;
+            } else {
+                analysisOverlay.classList.remove('hidden-panel');
+            }
 
-            for (let i = 0; i < layerCount; i++) {
-                const neuronCount = layerConfig[i];
-                const layerNeurons = [];
-                const yStep = height / (neuronCount + 1);
+            analysisStats.innerHTML = '';
+            let totalActivity = 0;
+            const jitter = jitterToggle.checked ? Math.random() * 0.1 : 0;
+            document.getElementById('jitterVal').textContent = jitter.toFixed(3);
 
-                for (let j = 0; j < neuronCount; j++) {
-                    layerNeurons.push(new Neuron(xStep * (i + 1), yStep * (j + 1), i, j));
-                }
-                layers.push(layerNeurons);
+            layerNames.forEach((name, i) => {
+                const base = layerBaseValues[i] || 0;
+                const val = activate(base, layerActivations[i]) + jitter;
+                totalActivity += val;
+                
+                const div = document.createElement('div');
+                div.className = "space-y-1";
+                div.innerHTML = `
+                    <div class="flex justify-between text-[10px] mono">
+                        <span class="text-slate-400 truncate w-24">${name}</span>
+                        <span style="color: ${currentTheme.primary}">${val.toFixed(3)}</span>
+                    </div>
+                    <div class="w-full h-1 bg-white/5 rounded-full overflow-hidden">
+                        <div class="h-full transition-all duration-300" style="width: ${Math.min(100, val * 100)}%; background: ${currentTheme.primary}"></div>
+                    </div>
+                `;
+                analysisStats.appendChild(div);
+            });
+
+            if (isPlaying) {
+                entropyHistory.push((totalActivity / Math.max(1, layerConfig.length)));
+                entropyHistory.shift();
+                drawSparkline();
             }
         }
 
-        function resize() {
-            width = container.clientWidth;
-            height = container.clientHeight;
-            canvas.width = width;
-            canvas.height = height;
-            initNetwork();
-        }
-
-        function animate() {
-            ctx.clearRect(0, 0, width, height);
-
-            const speed = parseFloat(document.getElementById('speedInput').value) / 100;
-            if (isPlaying) signalTime += speed;
-
-            // Draw Connections
-            for (let i = 0; i < layers.length - 1; i++) {
-                for (let n1 of layers[i]) {
-                    for (let n2 of layers[i + 1]) {
-                        new Connection(n1, n2).draw();
-                    }
-                }
+        function drawSparkline() {
+            // Fix: ensure canvas dimensions are correct and internal width matches CSS
+            const rect = sparklineCanvas.getBoundingClientRect();
+            if (sparklineCanvas.width !== rect.width || sparklineCanvas.height !== rect.height) {
+                sparklineCanvas.width = rect.width;
+                sparklineCanvas.height = rect.height;
             }
 
-            // Draw Neurons
-            for (let layer of layers) {
-                for (let neuron of layer) {
-                    neuron.draw();
-                }
-            }
+            const w = sparklineCanvas.width;
+            const h = sparklineCanvas.height;
+            
+            sctx.clearRect(0, 0, w, h);
+            sctx.beginPath();
+            sctx.strokeStyle = currentTheme.primary;
+            sctx.lineWidth = 2;
+            sctx.lineCap = 'round';
+            sctx.lineJoin = 'round';
 
-            animationFrameId = requestAnimationFrame(animate);
+            const step = w / (entropyHistory.length - 1);
+            entropyHistory.forEach((val, i) => {
+                const x = i * step;
+                // Clamp Y values to ensure they stay within canvas height
+                const y = h - (Math.min(1, Math.max(0, val)) * h * 0.8) - 4;
+                if (i === 0) sctx.moveTo(x, y); else sctx.lineTo(x, y);
+            });
+            sctx.stroke();
+
+            // Draw Area
+            sctx.lineTo(w, h); 
+            sctx.lineTo(0, h);
+            sctx.closePath();
+            sctx.fillStyle = currentTheme.primary + '22';
+            sctx.fill();
         }
 
-        // UI Building Logic
         function buildNeuronControls() {
             neuronsContainer.innerHTML = '';
             layerConfig.forEach((count, i) => {
                 const div = document.createElement('div');
+                div.className = "group p-4 rounded-xl bg-slate-900/50 border border-white/5 hover:border-blue-500/30 transition-all";
                 div.innerHTML = `
-                    <div class="flex justify-between mb-1">
-                        <span class="text-xs text-slate-400">Layer ${i + 1} Neurons</span>
-                        <span class="text-xs font-mono">${count}</span>
+                    <div class="mb-3"><input type="text" value="${layerNames[i]}" class="w-full bg-transparent border-none p-0 text-[10px] font-bold text-slate-400 uppercase tracking-widest layer-name-input" data-index="${i}"></div>
+                    <div class="grid grid-cols-2 gap-2 mb-3">
+                        <select class="bg-slate-800 text-[9px] text-slate-300 rounded border-none py-1 px-1.5 layer-activation-input" data-index="${i}">
+                            <option value="none" ${layerActivations[i] === 'none' ? 'selected' : ''}>Linear</option>
+                            <option value="relu" ${layerActivations[i] === 'relu' ? 'selected' : ''}>ReLU</option>
+                            <option value="sigmoid" ${layerActivations[i] === 'sigmoid' ? 'selected' : ''}>Sigmoid</option>
+                            <option value="tanh" ${layerActivations[i] === 'tanh' ? 'selected' : ''}>Tanh</option>
+                        </select>
+                        <input type="number" step="0.1" value="${layerBaseValues[i]}" class="bg-slate-800 text-slate-200 border-none rounded py-1 px-1.5 text-[10px] font-mono text-center layer-value-input" data-index="${i}">
                     </div>
-                    <input type="range" min="1" max="12" value="${count}" 
-                        class="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer layer-neuron-input" 
-                        data-index="${i}">
+                    <input type="range" min="1" max="12" value="${count}" class="w-full layer-neuron-input" data-index="${i}">
                 `;
                 neuronsContainer.appendChild(div);
             });
 
             document.querySelectorAll('.layer-neuron-input').forEach(input => {
                 input.oninput = (e) => {
-                    const idx = parseInt(e.target.dataset.index);
-                    layerConfig[idx] = parseInt(e.target.value);
-                    initNetwork();
-                    e.target.previousElementSibling.querySelector('span:last-child').textContent = e.target.value;
+                    layerConfig[parseInt(e.target.dataset.index)] = parseInt(e.target.value);
+                    initNetwork(); buildNeuronControls();
                 };
+            });
+            document.querySelectorAll('.layer-name-input').forEach(input => {
+                input.oninput = (e) => layerNames[parseInt(e.target.dataset.index)] = e.target.value;
+            });
+            document.querySelectorAll('.layer-value-input').forEach(input => {
+                input.oninput = (e) => layerBaseValues[parseInt(e.target.dataset.index)] = parseFloat(e.target.value) || 0;
+            });
+            document.querySelectorAll('.layer-activation-input').forEach(input => {
+                input.onchange = (e) => layerActivations[parseInt(e.target.dataset.index)] = e.target.value;
             });
         }
 
+        function initNetwork() {
+            layers = [];
+            const xPadding = width * 0.15;
+            const xStep = (width - xPadding * 2) / (layerConfig.length - 1 || 1);
+            for (let i = 0; i < layerConfig.length; i++) {
+                const count = layerConfig[i];
+                const layerNeurons = [];
+                const yPadding = height * 0.25; 
+                const yStep = (height - yPadding * 2) / (count - 1 || 1);
+                const startY = count === 1 ? height / 2 : yPadding;
+                for (let j = 0; j < count; j++) {
+                    layerNeurons.push(new Neuron(xPadding + xStep * i, startY + (count === 1 ? 0 : yStep * j), i, j));
+                }
+                layerNeurons.forEach(n => {
+                    // Pre-calc positions to avoid expensive math in draw
+                    n.x = xPadding + xStep * i;
+                    n.y = startY + (count === 1 ? 0 : yStep * n.neuronIdx);
+                });
+                layers.push(layerNeurons);
+            }
+        }
+
+        function resize() {
+            width = container.clientWidth; height = container.clientHeight;
+            // Higher resolution scaling for crisper video
+            canvas.width = width * 2; 
+            canvas.height = height * 2;
+            ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset
+            ctx.scale(2, 2);
+            canvas.style.width = width + 'px'; canvas.style.height = height + 'px';
+            initNetwork();
+        }
+
+        function animate() {
+            ctx.fillStyle = "#020617";
+            ctx.fillRect(0, 0, width, height);
+            
+            if (isPlaying) globalTime += 0.025;
+
+            ctx.save();
+            ctx.textAlign = 'center'; ctx.font = '600 10px "JetBrains Mono"';
+            layers.forEach((l, i) => {
+                ctx.fillStyle = '#64748b'; 
+                if (l[0]) ctx.fillText(layerNames[i].toUpperCase(), l[0].x, 40);
+            });
+            ctx.restore();
+
+            for (let i = 0; i < layers.length - 1; i++) {
+                for (let n1 of layers[i]) for (let n2 of layers[i + 1]) new Connection(n1, n2).draw();
+            }
+            layers.forEach(layer => layer.forEach(neuron => neuron.draw()));
+            updateAnalytics();
+            requestAnimationFrame(animate);
+        }
+
+        exportBtn.onclick = () => {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+                return;
+            }
+            recordedChunks = [];
+            const stream = canvas.captureStream(60); 
+            const options = {
+                mimeType: 'video/webm;codecs=vp9',
+                videoBitsPerSecond: 10000000 
+            };
+            try { mediaRecorder = new MediaRecorder(stream, options); } catch (e) {
+                mediaRecorder = new MediaRecorder(stream, { videoBitsPerSecond: 10000000 });
+            }
+            mediaRecorder.ondataavailable = (event) => { if (event.data.size > 0) recordedChunks.push(event.data); };
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none'; a.href = url;
+                a.download = `neural-flow-HD-${Date.now()}.webm`;
+                document.body.appendChild(a); a.click();
+                setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
+                exportText.textContent = "Export HQ Video";
+                exportBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
+                document.getElementById('recordingIndicator').classList.add('hidden');
+            };
+            mediaRecorder.start();
+            exportText.textContent = "Stop Recording";
+            exportBtn.classList.add('bg-red-600', 'hover:bg-red-700');
+            document.getElementById('recordingIndicator').classList.remove('hidden');
+        };
+
+        presetSelect.onchange = (e) => {
+            const mode = e.target.value;
+            if (mode === 'bottleneck') {
+                layerConfig = [4, 8, 2, 8, 4];
+                layerNames = ["Input", "Encoder", "Bottleneck", "Decoder", "Output"];
+                layerActivations = ["none", "relu", "tanh", "relu", "sigmoid"];
+            } else if (mode === 'wide') {
+                layerConfig = [2, 12, 2];
+                layerNames = ["Input", "Wide Feature Map", "Output"];
+                layerActivations = ["none", "relu", "sigmoid"];
+            } else if (mode === 'classifier') {
+                layerConfig = [5, 4, 4, 1];
+                layerNames = ["Data", "L1", "L2", "Probability"];
+                layerActivations = ["none", "relu", "relu", "sigmoid"];
+            }
+            layersInput.value = layerConfig.length;
+            layersValLabel.textContent = layerConfig.length + ' Layers';
+            buildNeuronControls(); initNetwork();
+        };
+
         layersInput.oninput = (e) => {
             const val = parseInt(e.target.value);
-            layersValLabel.textContent = val;
-            
-            // Adjust config array length
-            if (val > layerConfig.length) {
-                while (layerConfig.length < val) layerConfig.push(4);
-            } else {
-                layerConfig = layerConfig.slice(0, val);
+            layersValLabel.textContent = val + ' Layers';
+            while (layerConfig.length < val) { 
+                layerConfig.push(4); layerNames.push(`L${layerConfig.length}`); 
+                layerBaseValues.push(0.3); layerActivations.push('relu');
             }
-            
-            buildNeuronControls();
-            initNetwork();
+            layerConfig = layerConfig.slice(0, val);
+            buildNeuronControls(); initNetwork();
         };
 
         playPauseBtn.onclick = () => {
             isPlaying = !isPlaying;
             document.getElementById('playIcon').textContent = isPlaying ? '⏸' : '▶';
             document.getElementById('playText').textContent = isPlaying ? 'Pause' : 'Play';
+            document.getElementById('statusIndicator').className = isPlaying ? 'w-2 h-2 bg-emerald-500 rounded-full animate-pulse' : 'w-2 h-2 bg-slate-600 rounded-full';
         };
 
-        // Video Export Implementation
-        exportBtn.onclick = async () => {
-            if (mediaRecorder && mediaRecorder.state === 'recording') {
-                mediaRecorder.stop();
-                return;
-            }
-
-            recordedChunks = [];
-            const stream = canvas.captureStream(60); // 60 FPS
-            mediaRecorder = new MediaRecorder(stream, {
-                mimeType: 'video/webm;codecs=vp9'
-            });
-
-            mediaRecorder.ondataavailable = (e) => {
-                if (e.data.size > 0) recordedChunks.push(e.data);
-            };
-
-            mediaRecorder.onstop = () => {
-                const blob = new Blob(recordedChunks, { type: 'video/webm' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
-                a.download = `neural-flow-${Date.now()}.webm`;
-                document.body.appendChild(a);
-                a.click();
-                setTimeout(() => {
-                    document.body.removeChild(a);
-                    window.URL.revokeObjectURL(url);
-                }, 100);
-                
-                exportBtn.innerHTML = `
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                    Export Video
-                `;
-                recordingIndicator.classList.add('hidden');
-                exportBtn.classList.remove('bg-red-500');
-            };
-
-            // Start recording
-            mediaRecorder.start();
-            recordingIndicator.classList.remove('hidden');
-            exportBtn.innerHTML = 'Stop Recording';
-            exportBtn.classList.add('bg-red-500');
-
-            // Optional: Auto-stop after 10 seconds to prevent massive files
-            setTimeout(() => {
-                if (mediaRecorder.state === 'recording') mediaRecorder.stop();
-            }, 10000);
+        canvas.onclick = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            layers.forEach(layer => layer.forEach(n => {
+                const dist = Math.hypot(n.x - mouseX, n.y - mouseY);
+                if (dist < 20) {
+                    const id = `${n.layerIdx}-${n.neuronIdx}`;
+                    nodeBoosts[id] = true;
+                    setTimeout(() => delete nodeBoosts[id], 2000);
+                }
+            }));
         };
 
-        // Window Event Listeners
-        window.addEventListener('resize', resize);
-        window.onload = () => {
-            resize();
-            buildNeuronControls();
-            animate();
-        };
-
+        window.addEventListener('resize', () => { resize(); drawSparkline(); });
+        window.onload = () => { resize(); buildNeuronControls(); animate(); setTheme('blue'); };
     </script>
 </body>
 </html>
-
